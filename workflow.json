@@ -1,0 +1,133 @@
+{
+  "name": "ChatGPT + Whisper + WAHA (latest)",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "waha-teste",
+        "options": {}
+      },
+      "id": "1",
+      "name": "Webhook WAHA",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": "latest",
+      "position": [240, 300],
+      "webhookDescription": "Recebe mensagens do WhatsApp via WAHA"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [],
+          "string": [
+            {
+              "value1": "={{$json[\"body\"][\"payload\"][\"hasMedia\"]}}",
+              "operation": "is true"
+            }
+          ]
+        }
+      },
+      "id": "2",
+      "name": "Verifica se tem Áudio",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": "latest",
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{$json[\"body\"][\"payload\"][\"media\"][\"url\"]}}",
+        "responseFormat": "file",
+        "options": {}
+      },
+      "id": "3",
+      "name": "Baixar Áudio",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": "latest",
+      "position": [700, 200]
+    },
+    {
+      "parameters": {
+        "url": "https://api.openai.com/v1/audio/transcriptions",
+        "method": "POST",
+        "responseFormat": "json",
+        "sendBody": true,
+        "options": {
+          "bodyContentType": "multipart-form-data",
+          "headers": {
+            "parameters": [
+              { "name": "Authorization", "value": "Bearer {{$env.OPENAI_API_KEY}}" }
+            ]
+          }
+        },
+        "bodyParameters": {
+          "model": "whisper-1",
+          "file": "={{$binary.data}}"
+        }
+      },
+      "id": "4",
+      "name": "Transcrever Áudio (Whisper)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": "latest",
+      "position": [940, 200]
+    },
+    {
+      "parameters": {
+        "url": "https://api.openai.com/v1/chat/completions",
+        "method": "POST",
+        "responseFormat": "json",
+        "sendBody": true,
+        "options": {
+          "bodyContentType": "raw",
+          "headers": {
+            "parameters": [
+              { "name": "Authorization", "value": "Bearer {{$env.OPENAI_API_KEY}}" },
+              { "name": "Content-Type", "value": "application/json" }
+            ]
+          }
+        },
+        "bodyParametersJson": "={\n  \"model\": \"gpt-4o-mini-2024-07-18\",\n  \"messages\": [\n    {\"role\": \"system\", \"content\": \"Você é um assistente direto e cordial.\"},\n    {\"role\": \"user\", \"content\": \"{{$json[\\\"body\\\"][\\\"payload\\\"][\\\"body\\\"] || $json.text}}\"}\n  ]\n}"
+      },
+      "id": "5",
+      "name": "ChatGPT (RAW)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": "latest",
+      "position": [1180, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{$env.WAHA_URL}}/api/sendText",
+        "method": "POST",
+        "responseFormat": "json",
+        "sendBody": true,
+        "options": {
+          "bodyContentType": "raw",
+          "headers": {
+            "parameters": [
+              { "name": "Content-Type", "value": "application/json" },
+              { "name": "X-Api-Key", "value": "{{$env.WAHA_API_KEY}}" }
+            ]
+          }
+        },
+        "bodyParametersJson": "={\n  \"session\": \"default\",\n  \"chatId\": \"{{$json[\\\"body\\\"][\\\"payload\\\"][\\\"from\\\"]}}\",\n  \"text\": \"{{$json[\\\"choices\\\"][0][\\\"message\\\"][\\\"content\\\"]}}\"\n}"
+      },
+      "id": "6",
+      "name": "Enviar Resposta WAHA",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": "latest",
+      "position": [1420, 300]
+    }
+  ],
+  "connections": {
+    "Webhook WAHA": { "main": [ [ { "node": "Verifica se tem Áudio", "type": "main", "index": 0 } ] ] },
+    "Verifica se tem Áudio": {
+      "main": [
+        [ { "node": "Baixar Áudio", "type": "main", "index": 0 } ],
+        [ { "node": "ChatGPT (RAW)", "type": "main", "index": 0 } ]
+      ]
+    },
+    "Baixar Áudio": { "main": [ [ { "node": "Transcrever Áudio (Whisper)", "type": "main", "index": 0 } ] ] },
+    "Transcrever Áudio (Whisper)": { "main": [ [ { "node": "ChatGPT (RAW)", "type": "main", "index": 0 } ] ] },
+    "ChatGPT (RAW)": { "main": [ [ { "node": "Enviar Resposta WAHA", "type": "main", "index": 0 } ] ] }
+  ],
+  "active": false,
+  "settings": {},
+  "versionId": "latest"
+}
